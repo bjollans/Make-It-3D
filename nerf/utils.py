@@ -496,6 +496,8 @@ class Trainer(object):
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
         self.print_mem("train_step 4")
         # _t = time.time()
+
+        # TODO: add support for multi-gpu, this line uses the most VRAM
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
@@ -515,6 +517,8 @@ class Trainer(object):
             text_z = self.text_z[0]
             text = self.text[0]
         self.print_mem("train_step 9")
+        self.model.cpu()
+        self.print_mem("train_step 9.1")
         if self.global_step < self.opt.diff_iters or data['is_front']:
             loss = 0
             de_imgs = None
@@ -523,6 +527,8 @@ class Trainer(object):
             ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale)
         
         self.print_mem("train_step 10")
+        self.model.to(self.device)
+        self.print_mem("train_step 10.1")
         if self.opt.lambda_opacity > 0:
             loss_opacity = (pred_ws ** 2).mean()
             if data['is_large']:

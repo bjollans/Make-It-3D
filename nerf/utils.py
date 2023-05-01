@@ -467,6 +467,7 @@ class Trainer(object):
         B, N = rays_o.shape[:2]
         H, W = data['H'], data['W']
 
+        self.print_mem("train_step 1")
         if self.global_step < self.opt.albedo_iters or data['is_front']:
             shading = 'albedo'
             ambient_ratio = 1.0
@@ -482,24 +483,29 @@ class Trainer(object):
                 shading = 'lambertian'
                 ambient_ratio = 0.1
 
+        self.print_mem("train_step 2")
         if self.global_step % 10 == 0:
             verbose = True
         else:
             verbose = False
 
+        self.print_mem("train_step 3")
         ref_imgs = self.ref_imgs
         bg_color = torch.rand(3, device=self.ref_imgs.device) # [3], frame-wise random.
         bg_img = bg_color.expand(1, 512, 512, 3).permute(0, 3, 1, 2).contiguous()
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
-
+        self.print_mem("train_step 4")
         # _t = time.time()
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
-
+        self.print_mem("train_step 5")
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
+        self.print_mem("train_step 6")
         pred_depth = outputs['depth'].reshape(B, H, W, 1).permute(0, 3, 1, 2).contiguous() # [1, 1, H, W]
+        self.print_mem("train_step 7")
         pred_ws = outputs['weights_sum'].reshape(B, 1, H, W)
+        self.print_mem("train_step 8")
 
 
         if data['is_large']:
@@ -508,21 +514,23 @@ class Trainer(object):
         else:
             text_z = self.text_z[0]
             text = self.text[0]
-        
+        self.print_mem("train_step 9")
         if self.global_step < self.opt.diff_iters or data['is_front']:
             loss = 0
             de_imgs = None
         else:
             loss, de_imgs = self.guidance.train_step(text_z, pred_rgb, clip_model=self.clip_model, 
             ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale)
-
+        
+        self.print_mem("train_step 10")
         if self.opt.lambda_opacity > 0:
             loss_opacity = (pred_ws ** 2).mean()
             if data['is_large']:
                 loss = loss + self.opt.lambda_opacity * loss_opacity * 10
             else:
                 loss = loss + self.opt.lambda_opacity * loss_opacity
-
+        
+        self.print_mem("train_step 11")
         if self.opt.lambda_entropy > 0:
             alphas = (pred_ws).clamp(1e-5, 1 - 1e-5)
             # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
@@ -531,10 +539,12 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_entropy * loss_entropy
             else:
                 loss = loss + self.opt.lambda_entropy * loss_entropy * 10
-
+        
+        self.print_mem("train_step 12")
         if verbose:
             print(f"loss_entropy: {loss_entropy}, loss_opacity: {loss_opacity}")
 
+        self.print_mem("train_step 13")
         if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
             loss_orient = outputs['loss_orient']
             loss = loss + self.opt.lambda_orient * loss_orient
@@ -543,15 +553,18 @@ class Trainer(object):
             else:
                 loss = loss + self.opt.lambda_orient * loss_orient * 10
 
+        self.print_mem("train_step 14")
         if self.opt.lambda_smooth > 0 and 'loss_smooth' in outputs:
             loss_smooth = outputs['loss_smooth']
             loss = loss + self.opt.lambda_smooth * loss_smooth
 
-        
+        self.print_mem("train_step 15")
         pred_rgb = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=True)
+        self.print_mem("train_step 16")
         pred_depth = F.interpolate(pred_depth, (512, 512), mode='bilinear', align_corners=True)
+        self.print_mem("train_step 17")
         print(f'pred_rgb: {pred_rgb.shape}, gt_rgb: {gt_rgb.shape}')
-        
+    
         if data['is_front']:
             loss_ref = self.opt.lambda_img * self.img_loss(pred_rgb, gt_rgb)
             loss_depth = self.opt.lambda_depth * self.depth_loss(self.pearson, pred_depth, self.depth_prediction, ~self.depth_mask)
@@ -567,7 +580,8 @@ class Trainer(object):
             else:
                 # default is 1 for lambda_clip
                 loss_ref = self.img_clip_loss(pred_rgb, gt_rgb) + self.img_text_clip_loss(pred_rgb, text)
-
+        
+        self.print_mem("train_step 18")
         if self.global_step % 100 == 0 or self.global_step == 1:
             save_image(pred_rgb, os.path.join(self.img_path,  f'{self.global_step}.png'))
             save_image(gt_rgb, os.path.join(self.img_path,  f'{self.global_step}_gt.png'))
@@ -576,8 +590,10 @@ class Trainer(object):
             if de_imgs is not None:
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
         print(f'loss: {loss}, loss_ref: {loss_ref}')
+        self.print_mem("train_step 19")
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
         del bg_color, bg_img, gt_rgb, outputs, pred_depth, loss_ref, loss_opacity, loss_entropy, loss_smooth, loss_orient
+        self.print_mem("train_step 20")
         return pred_rgb, pred_ws, loss
 
     def eval_step(self, data):

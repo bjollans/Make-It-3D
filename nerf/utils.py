@@ -85,6 +85,7 @@ def get_rays(poses, intrinsics, H, W, N=-1, error_map=None):
             inds_x = (inds_x * sx + torch.rand(B, N, device=device) * sx).long().clamp(max=H - 1)
             inds_y = (inds_y * sy + torch.rand(B, N, device=device) * sy).long().clamp(max=W - 1)
             inds = inds_x * W + inds_y
+            del inds_x, inds_y, error_map
 
             results['inds_coarse'] = inds_coarse # need this when updating error_map
 
@@ -244,12 +245,16 @@ class Trainer(object):
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
         self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
+
+        #self.clip_model.cpu()
+        #self.clip_preprocess.cpu()
+
         self.ref_imgs = ref_imgs
         self.ori_imgs = ori_imgs
         self.depth_prediction = ref_depth
         self.depth_mask = ref_mask
     
-        model.to(self.device)
+        #model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
@@ -261,6 +266,7 @@ class Trainer(object):
             depth_model = torch.nn.parallel.DistributedDataParallel(depth_model, device_ids=[local_rank])
         self.depth_model = depth_model
         self.depth_model.eval()
+        del depth_model
 
         self.depth_transform = T.Compose(
         [
@@ -283,9 +289,9 @@ class Trainer(object):
         else:
             self.text_z = None
     
-        if isinstance(criterion, nn.Module):
-            criterion.to(self.device)
-        self.criterion = criterion
+        #if isinstance(criterion, nn.Module):
+        #    criterion.to(self.device)
+        #self.criterion = criterion
         self.pearson = PearsonCorrCoef().to(self.device)
         
 
@@ -448,6 +454,7 @@ class Trainer(object):
         text_z = self.clip_model.encode_text(text)
         text_z = text_z / text_z.norm(dim=-1, keepdim=True)
         loss = - (image_z_1 * text_z).sum(-1).mean()
+        del text, text_z
         return loss
     ### ------------------------------	
 
@@ -485,11 +492,14 @@ class Trainer(object):
         bg_img = bg_color.expand(1, 512, 512, 3).permute(0, 3, 1, 2).contiguous()
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
 
+        self.clip_model.cpu()
+        self.model.to(self.device)
         # _t = time.time()
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
-        
+        self.model.cpu()
+        self.clip_model.to(self.device)
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
         pred_depth = outputs['depth'].reshape(B, H, W, 1).permute(0, 3, 1, 2).contiguous() # [1, 1, H, W]
         pred_ws = outputs['weights_sum'].reshape(B, 1, H, W)
@@ -564,6 +574,7 @@ class Trainer(object):
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
         
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
+        del bg_color, bg_img, gt_rgb, outputs, pred_depth, pred_ws, pred_rgb, loss_ref, loss_depth, loss_opacity, loss_entropy, loss_smooth, loss_orient
         return pred_rgb, pred_ws, loss
 
     def eval_step(self, data):

@@ -12,8 +12,7 @@ class CLIP(nn.Module):
 
         self.device = device
 
-        clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
-        self.clip_model = torch.nn.DataParallel(clip_model)
+        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
         
          # image augmentation
         self.aug = T.Compose([

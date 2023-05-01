@@ -244,8 +244,7 @@ class Trainer(object):
         self.scheduler_update_every_step = scheduler_update_every_step
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
-        clip_model, self.clip_preprocess = clip.load("ViT-B/16", jit=False)
-        self.clip_model = torch.nn.DataParallel(clip_model)
+        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", jit=False)
 
         #self.clip_model.cpu()
         #self.clip_preprocess.cpu()

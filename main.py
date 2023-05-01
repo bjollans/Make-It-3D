@@ -158,7 +158,8 @@ if __name__ == '__main__':
         print("load blip2 for image caption...")
         processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
         blip_model = Blip2ForConditionalGeneration.from_pretrained("Salesforce/blip2-opt-2.7b", torch_dtype=torch.float16).to("cuda")
-        inputs = processor(image_pil, return_tensors="pt").to("cuda", torch.float16)
+        processor_instance = processor(image_pil, return_tensors="pt")
+        inputs = processor_instance.to("cuda", torch.float16)
         out = blip_model.generate(**inputs)
         caption = processor.batch_decode(out, skip_special_tokens=True)[0].strip()
         caption = caption.replace("there is ", "")
@@ -168,6 +169,10 @@ if __name__ == '__main__':
                 caption = caption.replace(d, "ground")
         print("Caption: ", caption)
         opt.text = caption
+        del inputs
+        del processor_instance
+        del processor
+        del blip_model
 
     with open(os.path.join(opt.workspace, 'setting.txt'), 'w') as f:
         f.writelines('------------------ start ------------------' + '\n')

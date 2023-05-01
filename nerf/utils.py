@@ -755,6 +755,7 @@ class Trainer(object):
         r = torch.cuda.memory_reserved(0)
         a = torch.cuda.memory_allocated(0)
         f = r-a
+        print("----------------------------------------")
         print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
 
     def train_one_epoch(self, loader):
@@ -785,25 +786,34 @@ class Trainer(object):
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     self.model.update_extra_state()
                     
+            self.print_mem("middle step 1")
             self.local_step += 1
             self.global_step += 1
 
             self.optimizer.zero_grad()
+            self.print_mem("middle step 2")
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 pred_rgbs, pred_ws, loss = self.train_step(data)
 
+            self.print_mem("middle step 3")
 
             self.scaler.scale(loss).backward()
             nn.utils.clip_grad_norm(self.model.parameters(), max_norm=10)
             self.scaler.step(self.optimizer)
             self.scaler.update()
 
+            self.print_mem("middle step 4")
+
             if self.scheduler_update_every_step:
                 self.lr_scheduler.step()
 
+            self.print_mem("middle step 5")
+
             loss_val = loss.item()
             total_loss += loss_val
+
+            self.print_mem("middle step 6")
 
             if self.local_rank == 0:
 

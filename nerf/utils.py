@@ -254,7 +254,7 @@ class Trainer(object):
         self.depth_prediction = ref_depth
         self.depth_mask = ref_mask
     
-        #model.to(self.device)
+        model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
@@ -750,15 +750,23 @@ class Trainer(object):
 
         self.log(f"==> Finished Test.")
     
+    def print_mem(self, moment):
+        t = torch.cuda.get_device_properties(0).total_memory
+        r = torch.cuda.memory_reserved(0)
+        a = torch.cuda.memory_allocated(0)
+        f = r-a
+        print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
+
     def train_one_epoch(self, loader):
         self.log(f"==> Start Training {self.workspace} Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
-
+        self.print_mem("start")
         total_loss = 0
         if self.local_rank == 0 and self.report_metric_at_train:
             for metric in self.metrics:
                 metric.clear()
 
         self.model.train()
+        self.print_mem("train")
 
         # distributedSampler: must call set_epoch() to shuffle indices across multiple epochs
         # ref: https://pytorch.org/docs/stable/data.html
@@ -771,7 +779,7 @@ class Trainer(object):
         self.local_step = 0
 
         for data in loader:
-            
+            self.print_mem("before step")
             # update grid every 16 steps
             if self.model.cuda_ray and self.global_step % self.opt.update_extra_interval == 0:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
@@ -808,13 +816,16 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                 pbar.update(loader.batch_size)
+            self.print_mem("after step")
 
         if self.ema is not None:
             self.ema.update()
 
+        self.print_mem("before sync")
         average_loss = total_loss / self.local_step
         self.stats["loss"].append(average_loss)
 
+        self.print_mem("after sync")
         if self.local_rank == 0:
             pbar.close()
             if self.report_metric_at_train:
@@ -824,6 +835,7 @@ class Trainer(object):
                         metric.write(self.writer, self.epoch, prefix="train")
                     metric.clear()
 
+        self.print_mem("after report")
         if not self.scheduler_update_every_step:
             if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.lr_scheduler.step(average_loss)

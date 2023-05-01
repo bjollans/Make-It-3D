@@ -580,7 +580,7 @@ class Trainer(object):
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
         print(f'loss: {loss}, loss_ref: {loss_ref}')
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
-        del bg_color, bg_img, gt_rgb, outputs, pred_depth, loss_depth, loss_opacity, loss_entropy, loss_smooth, loss_orient
+        del bg_color, bg_img, gt_rgb, outputs, pred_depth, loss_ref, loss_opacity, loss_entropy, loss_smooth, loss_orient
         return pred_rgb, pred_ws, loss
 
     def eval_step(self, data):

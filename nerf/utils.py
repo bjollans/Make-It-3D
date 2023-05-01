@@ -244,7 +244,7 @@ class Trainer(object):
         self.scheduler_update_every_step = scheduler_update_every_step
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
-        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", jit=False)
+        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
 
         #self.clip_model.cpu()
         #self.clip_preprocess.cpu()
@@ -467,7 +467,6 @@ class Trainer(object):
         B, N = rays_o.shape[:2]
         H, W = data['H'], data['W']
 
-        self.print_mem("train_step 1")
         if self.global_step < self.opt.albedo_iters or data['is_front']:
             shading = 'albedo'
             ambient_ratio = 1.0
@@ -483,31 +482,24 @@ class Trainer(object):
                 shading = 'lambertian'
                 ambient_ratio = 0.1
 
-        self.print_mem("train_step 2")
         if self.global_step % 10 == 0:
             verbose = True
         else:
             verbose = False
 
-        self.print_mem("train_step 3")
         ref_imgs = self.ref_imgs
         bg_color = torch.rand(3, device=self.ref_imgs.device) # [3], frame-wise random.
         bg_img = bg_color.expand(1, 512, 512, 3).permute(0, 3, 1, 2).contiguous()
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
-        self.print_mem("train_step 4")
-        # _t = time.time()
 
-        # TODO: add support for multi-gpu, this line uses the most VRAM
+        # _t = time.time()
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
-        self.print_mem("train_step 5")
+
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
-        self.print_mem("train_step 6")
         pred_depth = outputs['depth'].reshape(B, H, W, 1).permute(0, 3, 1, 2).contiguous() # [1, 1, H, W]
-        self.print_mem("train_step 7")
         pred_ws = outputs['weights_sum'].reshape(B, 1, H, W)
-        self.print_mem("train_step 8")
 
 
         if data['is_large']:
@@ -516,28 +508,21 @@ class Trainer(object):
         else:
             text_z = self.text_z[0]
             text = self.text[0]
-        self.print_mem("train_step 9")
-        self.model.cpu()
-        self.print_mem("train_step 9.1")
+        
         if self.global_step < self.opt.diff_iters or data['is_front']:
             loss = 0
             de_imgs = None
         else:
             loss, de_imgs = self.guidance.train_step(text_z, pred_rgb, clip_model=self.clip_model, 
-            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale,
-            model=self.model, device=self.device)
-        
-        self.print_mem("train_step 10")
-        self.model.to(self.device)
-        self.print_mem("train_step 10.1")
+            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale)
+
         if self.opt.lambda_opacity > 0:
             loss_opacity = (pred_ws ** 2).mean()
             if data['is_large']:
                 loss = loss + self.opt.lambda_opacity * loss_opacity * 10
             else:
                 loss = loss + self.opt.lambda_opacity * loss_opacity
-        
-        self.print_mem("train_step 11")
+
         if self.opt.lambda_entropy > 0:
             alphas = (pred_ws).clamp(1e-5, 1 - 1e-5)
             # alphas = alphas ** 2 # skewed entropy, favors 0 over 1
@@ -546,12 +531,10 @@ class Trainer(object):
                 loss = loss + self.opt.lambda_entropy * loss_entropy
             else:
                 loss = loss + self.opt.lambda_entropy * loss_entropy * 10
-        
-        self.print_mem("train_step 12")
+
         if verbose:
             print(f"loss_entropy: {loss_entropy}, loss_opacity: {loss_opacity}")
 
-        self.print_mem("train_step 13")
         if self.opt.lambda_orient > 0 and 'loss_orient' in outputs:
             loss_orient = outputs['loss_orient']
             loss = loss + self.opt.lambda_orient * loss_orient
@@ -560,19 +543,15 @@ class Trainer(object):
             else:
                 loss = loss + self.opt.lambda_orient * loss_orient * 10
 
-        self.print_mem("train_step 14")
         if self.opt.lambda_smooth > 0 and 'loss_smooth' in outputs:
             loss_smooth = outputs['loss_smooth']
             loss = loss + self.opt.lambda_smooth * loss_smooth
 
-        self.print_mem("train_step 15")
+        
         pred_rgb = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=True)
-        self.print_mem("train_step 16")
         pred_depth = F.interpolate(pred_depth, (512, 512), mode='bilinear', align_corners=True)
-        self.print_mem("train_step 17")
         print(f'pred_rgb: {pred_rgb.shape}, gt_rgb: {gt_rgb.shape}')
-    
-        self.model.cpu()
+        
         if data['is_front']:
             loss_ref = self.opt.lambda_img * self.img_loss(pred_rgb, gt_rgb)
             loss_depth = self.opt.lambda_depth * self.depth_loss(self.pearson, pred_depth, self.depth_prediction, ~self.depth_mask)
@@ -588,9 +567,7 @@ class Trainer(object):
             else:
                 # default is 1 for lambda_clip
                 loss_ref = self.img_clip_loss(pred_rgb, gt_rgb) + self.img_text_clip_loss(pred_rgb, text)
-        self.model.to(self.device)
-        
-        self.print_mem("train_step 18")
+
         if self.global_step % 100 == 0 or self.global_step == 1:
             save_image(pred_rgb, os.path.join(self.img_path,  f'{self.global_step}.png'))
             save_image(gt_rgb, os.path.join(self.img_path,  f'{self.global_step}_gt.png'))
@@ -599,10 +576,8 @@ class Trainer(object):
             if de_imgs is not None:
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
         print(f'loss: {loss}, loss_ref: {loss_ref}')
-        self.print_mem("train_step 19")
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
         del bg_color, bg_img, gt_rgb, outputs, pred_depth, loss_ref, loss_opacity, loss_entropy, loss_smooth, loss_orient
-        self.print_mem("train_step 20")
         return pred_rgb, pred_ws, loss
 
     def eval_step(self, data):
@@ -775,24 +750,15 @@ class Trainer(object):
 
         self.log(f"==> Finished Test.")
     
-    def print_mem(self, moment):
-        t = torch.cuda.get_device_properties(0).total_memory
-        r = torch.cuda.memory_reserved(0)
-        a = torch.cuda.memory_allocated(0)
-        f = r-a
-        print("----------------------------------------")
-        print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
-
     def train_one_epoch(self, loader):
         self.log(f"==> Start Training {self.workspace} Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")
-        self.print_mem("start")
+
         total_loss = 0
         if self.local_rank == 0 and self.report_metric_at_train:
             for metric in self.metrics:
                 metric.clear()
 
         self.model.train()
-        self.print_mem("train")
 
         # distributedSampler: must call set_epoch() to shuffle indices across multiple epochs
         # ref: https://pytorch.org/docs/stable/data.html
@@ -805,43 +771,31 @@ class Trainer(object):
         self.local_step = 0
 
         for data in loader:
-            self.print_mem("before step")
+            
             # update grid every 16 steps
             if self.model.cuda_ray and self.global_step % self.opt.update_extra_interval == 0:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     self.model.update_extra_state()
                     
-            self.print_mem("middle step 1")
             self.local_step += 1
             self.global_step += 1
 
             self.optimizer.zero_grad()
-            self.print_mem("middle step 2")
 
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 pred_rgbs, pred_ws, loss = self.train_step(data)
 
-            self.print_mem("middle step 3")
 
             self.scaler.scale(loss).backward()
-            self.print_mem("middle step 3.1")
             nn.utils.clip_grad_norm(self.model.parameters(), max_norm=10)
-            self.print_mem("middle step 3.2")
             self.scaler.step(self.optimizer)
-            self.print_mem("middle step 3.3")
             self.scaler.update()
-
-            self.print_mem("middle step 4")
 
             if self.scheduler_update_every_step:
                 self.lr_scheduler.step()
 
-            self.print_mem("middle step 5")
-
             loss_val = loss.item()
             total_loss += loss_val
-
-            self.print_mem("middle step 6")
 
             if self.local_rank == 0:
 
@@ -854,16 +808,13 @@ class Trainer(object):
                 else:
                     pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
                 pbar.update(loader.batch_size)
-            self.print_mem("after step")
 
         if self.ema is not None:
             self.ema.update()
 
-        self.print_mem("before sync")
         average_loss = total_loss / self.local_step
         self.stats["loss"].append(average_loss)
 
-        self.print_mem("after sync")
         if self.local_rank == 0:
             pbar.close()
             if self.report_metric_at_train:
@@ -873,7 +824,6 @@ class Trainer(object):
                         metric.write(self.writer, self.epoch, prefix="train")
                     metric.clear()
 
-        self.print_mem("after report")
         if not self.scheduler_update_every_step:
             if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.lr_scheduler.step(average_loss)

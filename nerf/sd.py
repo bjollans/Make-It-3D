@@ -114,7 +114,7 @@ class StableDiffusion(nn.Module):
         return loss
 
 
-    def train_step(self, text_embeddings, pred_rgb, ref_rgb=None, noise=None, islarge=False, ref_text=None, clip_model=None, guidance_scale=10):
+    def train_step(self, text_embeddings, pred_rgb, ref_rgb=None, noise=None, islarge=False, ref_text=None, clip_model=None, guidance_scale=10, model=None, device=None):
         
         # interp to 512x512 to be fed into vae.
         loss = 0
@@ -168,6 +168,7 @@ class StableDiffusion(nn.Module):
 
             # clip grad for stable training?
             grad = torch.nan_to_num(grad)
+            model.to(device)
             latents.backward(gradient=grad, retain_graph=True)
             loss = 0
         

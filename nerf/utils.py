@@ -244,7 +244,8 @@ class Trainer(object):
         self.scheduler_update_every_step = scheduler_update_every_step
         self.device = device if device is not None else torch.device(f'cuda:{local_rank}' if torch.cuda.is_available() else 'cpu')
         self.console = Console()
-        self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", device=self.device, jit=False)
+        clip_model, self.clip_preprocess = clip.load("ViT-B/16", jit=False)
+        self.clip_model = torch.nn.DataParallel(clip_model)
 
         #self.clip_model.cpu()
         #self.clip_preprocess.cpu()
@@ -257,13 +258,13 @@ class Trainer(object):
         model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
+            model = torch.nn.parallel.DataParallel(model)
         self.model = model
 
         depth_model.to(self.device)
         if self.world_size > 1:
             depth_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(depth_model)
-            depth_model = torch.nn.parallel.DistributedDataParallel(depth_model, device_ids=[local_rank])
+            depth_model = torch.nn.parallel.DataParallel(depth_model)
         self.depth_model = depth_model
         self.depth_model.eval()
         del depth_model
@@ -524,7 +525,8 @@ class Trainer(object):
             de_imgs = None
         else:
             loss, de_imgs = self.guidance.train_step(text_z, pred_rgb, clip_model=self.clip_model, 
-            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale)
+            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale,
+            model=self.model, device=self.device)
         
         self.print_mem("train_step 10")
         self.model.to(self.device)

@@ -492,14 +492,11 @@ class Trainer(object):
         bg_img = bg_color.expand(1, 512, 512, 3).permute(0, 3, 1, 2).contiguous()
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
 
-        self.clip_model.cpu()
-        self.model.to(self.device)
         # _t = time.time()
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
-        self.model.cpu()
-        self.clip_model.to(self.device)
+
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
         pred_depth = outputs['depth'].reshape(B, H, W, 1).permute(0, 3, 1, 2).contiguous() # [1, 1, H, W]
         pred_ws = outputs['weights_sum'].reshape(B, 1, H, W)
@@ -580,7 +577,7 @@ class Trainer(object):
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
         print(f'loss: {loss}, loss_ref: {loss_ref}')
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
-        del bg_color, bg_img, gt_rgb, outputs, pred_depth, pred_ws, pred_rgb, loss_ref, loss_depth, loss_opacity, loss_entropy, loss_smooth, loss_orient
+        del bg_color, bg_img, gt_rgb, outputs, pred_depth, loss_depth, loss_opacity, loss_entropy, loss_smooth, loss_orient
         return pred_rgb, pred_ws, loss
 
     def eval_step(self, data):

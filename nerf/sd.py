@@ -154,7 +154,8 @@ class StableDiffusion(nn.Module):
             latent_model_input = torch.cat([latents_noisy] * 2)
             latent_model_input = latent_model_input.detach().requires_grad_()
             self.print_mem("train_step_sd 5")
-            
+            model.cpu()
+            self.print_mem("train_step_sd 5.1")
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
             # torch.cuda.synchronize(); print(f'[TIME] guiding: unet {time.time() - _t:.4f}s')
             self.print_mem("train_step_sd 6")

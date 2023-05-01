@@ -565,6 +565,7 @@ class Trainer(object):
         self.print_mem("train_step 17")
         print(f'pred_rgb: {pred_rgb.shape}, gt_rgb: {gt_rgb.shape}')
     
+        self.model.cpu()
         if data['is_front']:
             loss_ref = self.opt.lambda_img * self.img_loss(pred_rgb, gt_rgb)
             loss_depth = self.opt.lambda_depth * self.depth_loss(self.pearson, pred_depth, self.depth_prediction, ~self.depth_mask)
@@ -580,6 +581,7 @@ class Trainer(object):
             else:
                 # default is 1 for lambda_clip
                 loss_ref = self.img_clip_loss(pred_rgb, gt_rgb) + self.img_text_clip_loss(pred_rgb, text)
+        self.model.to(self.device)
         
         self.print_mem("train_step 18")
         if self.global_step % 100 == 0 or self.global_step == 1:

@@ -553,17 +553,23 @@ class Trainer(object):
         
         pred_rgb = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=True)
         pred_depth = F.interpolate(pred_depth, (512, 512), mode='bilinear', align_corners=True)
+        print(f'pred_rgb: {pred_rgb.shape}, gt_rgb: {gt_rgb.shape}')
         
         if data['is_front']:
             loss_ref = self.opt.lambda_img * self.img_loss(pred_rgb, gt_rgb)
             loss_depth = self.opt.lambda_depth * self.depth_loss(self.pearson, pred_depth, self.depth_prediction, ~self.depth_mask)
-            if verbose:
-                print(f"loss_depth: {loss_depth}, loss_img: {loss_ref}")
+            print(f"was_front; loss_depth: {loss_depth}, loss_img: {loss_ref}")
+            print(f'lambda_depth: {self.opt.lambda_depth} lambda_img: {self.opt.lambda_img}')
             loss_ref += loss_depth
 
         else:
-            loss_ref = self.opt.lambda_clip * self.img_clip_loss(pred_rgb, gt_rgb) + \
-                        self.opt.lambda_clip * self.img_text_clip_loss(pred_rgb, text)
+            print(f'lambda_clip: {self.opt.lambda_clip}')
+            if self.opt.lambda_clip:
+                loss_ref = self.opt.lambda_clip * self.img_clip_loss(pred_rgb, gt_rgb) + \
+                            self.opt.lambda_clip * self.img_text_clip_loss(pred_rgb, text)
+            else:
+                # default is 1 for lambda_clip
+                loss_ref = self.img_clip_loss(pred_rgb, gt_rgb) + self.img_text_clip_loss(pred_rgb, text)
 
         if self.global_step % 100 == 0 or self.global_step == 1:
             save_image(pred_rgb, os.path.join(self.img_path,  f'{self.global_step}.png'))
@@ -572,7 +578,7 @@ class Trainer(object):
             save_image(self.depth_prediction * (~self.depth_mask), os.path.join(self.img_path,  f'{self.global_step}_ref_depth_mask.png'))
             if de_imgs is not None:
                 save_image(de_imgs, os.path.join(self.img_path,  f'{self.global_step}_denoise.png'))
-        
+        print(f'loss: {loss}, loss_ref: {loss_ref}')
         loss = loss + loss_ref   # loss_depth = 0.01 * self.opt.lambda_img * (self.img_loss(pred_depth, self.depth_prediction) + 1e-2)
         del bg_color, bg_img, gt_rgb, outputs, pred_depth, pred_ws, pred_rgb, loss_ref, loss_depth, loss_opacity, loss_entropy, loss_smooth, loss_orient
         return pred_rgb, pred_ws, loss

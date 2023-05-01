@@ -254,7 +254,7 @@ class Trainer(object):
         self.depth_prediction = ref_depth
         self.depth_mask = ref_mask
     
-        #model.to(self.device)
+        model.to(self.device)
         if self.world_size > 1:
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank])
@@ -492,11 +492,14 @@ class Trainer(object):
         bg_img = bg_color.expand(1, 512, 512, 3).permute(0, 3, 1, 2).contiguous()
         gt_rgb = ref_imgs[:, :3, :, :] * ref_imgs[:, 3:, :, :] + bg_img * (1 - ref_imgs[:, 3:, :, :])
 
+        self.clip_model.cpu()
+        self.model.to(self.device)
         # _t = time.time()
         outputs = self.model.render(rays_o, rays_d, depth_scale=depth_scale, 
                             bg_color=bg_color, staged=False, perturb=True, ambient_ratio=ambient_ratio, 
                             shading=shading, force_all_rays=True, **vars(self.opt))
-
+        self.model.cpu()
+        self.clip_model.to(self.device)
         pred_rgb = outputs['image'].reshape(B, H, W, 3).permute(0, 3, 1, 2).contiguous() # [1, 3, H, W]
         pred_depth = outputs['depth'].reshape(B, H, W, 1).permute(0, 3, 1, 2).contiguous() # [1, 1, H, W]
         pred_ws = outputs['weights_sum'].reshape(B, 1, H, W)
@@ -772,10 +775,12 @@ class Trainer(object):
 
         for data in loader:
             
+            self.model.to(self.device)
             # update grid every 16 steps
             if self.model.cuda_ray and self.global_step % self.opt.update_extra_interval == 0:
                 with torch.cuda.amp.autocast(enabled=self.fp16):
                     self.model.update_extra_state()
+            self.model.cpu()
                     
             self.local_step += 1
             self.global_step += 1
@@ -785,11 +790,12 @@ class Trainer(object):
             with torch.cuda.amp.autocast(enabled=self.fp16):
                 pred_rgbs, pred_ws, loss = self.train_step(data)
 
-
+            self.model.to(self.device)
             self.scaler.scale(loss).backward()
             nn.utils.clip_grad_norm(self.model.parameters(), max_norm=10)
             self.scaler.step(self.optimizer)
             self.scaler.update()
+            self.model.cpu()
 
             if self.scheduler_update_every_step:
                 self.lr_scheduler.step()

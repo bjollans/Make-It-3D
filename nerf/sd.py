@@ -198,7 +198,9 @@ class StableDiffusion(nn.Module):
             self.print_mem("train_step_sd 15")
             model.to(device)
             self.print_mem("train_step_sd 16")
+            self.vae.to(device)
             latents.backward(gradient=grad, retain_graph=True)
+            self.vae.cpu()
             self.print_mem("train_step_sd 17")
             loss = 0
         self.print_mem("train_step_sd 18")

@@ -699,6 +699,7 @@ class Trainer(object):
         for epoch in range(self.epoch + 1, max_epochs + 1):
             self.epoch = epoch
 
+            self.print_mem("before epoch")
             self.train_one_epoch(train_loader)
             if self.epoch % self.eval_interval == 0:
                 self.evaluate_one_epoch(valid_loader)

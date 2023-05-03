@@ -207,13 +207,13 @@ class StableDiffusion(nn.Module):
             grad = torch.nan_to_num(grad)
             self.print_mem("train_step_sd 15")
 
-            self.vae.to(self.device)
-            latents.backward(gradient=grad, retain_graph=True)
-            self.vae.cpu()
-            
-            self.print_mem("train_step_sd 16")
+            #self.vae.to(self.device)
+            #latents.backward(gradient=grad, retain_graph=True)
+            #self.vae.cpu()
+
+            #self.print_mem("train_step_sd 16")
             loss = 0
-        self.print_mem("train_step_sd 17")
+        self.print_mem("train_step_sd 16")
         del t
         return loss, imgs # dummy loss value
 

@@ -132,7 +132,7 @@ class StableDiffusion(nn.Module):
         print("----------------------------------------")
         print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
 
-    def train_step(self, text_embeddings, pred_rgb, ref_rgb=None, noise=None, islarge=False, ref_text=None, clip_model=None, guidance_scale=10, model=None, device=None):
+    def train_step(self, text_embeddings, pred_rgb, ref_rgb=None, noise=None, islarge=False, ref_text=None, clip_model=None, guidance_scale=10):
         
         # interp to 512x512 to be fed into vae.
         loss = 0
@@ -165,7 +165,6 @@ class StableDiffusion(nn.Module):
             latent_model_input = torch.cat([latents_noisy] * 2)
             latent_model_input = latent_model_input.detach().requires_grad_()
             self.print_mem("train_step_sd 5")
-            model.cpu()
             gc.collect()
             torch.cuda.empty_cache()
             self.print_mem("train_step_sd 5.1")
@@ -207,9 +206,8 @@ class StableDiffusion(nn.Module):
             # clip grad for stable training?
             grad = torch.nan_to_num(grad)
             self.print_mem("train_step_sd 15")
-            model.to(device)
+            self.vae.to(self.device)
             self.print_mem("train_step_sd 16")
-            self.vae.to(device)
             latents.backward(gradient=grad, retain_graph=True)
             self.vae.cpu()
             gc.collect()

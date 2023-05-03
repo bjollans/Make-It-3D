@@ -209,6 +209,11 @@ if __name__ == '__main__':
         disparity = imageio.imread(os.path.join(opt.workspace, opt.text.replace(" ", "_") + '_depth.png')) / 65535.
         disparity = median_filter(disparity, size=5)
         depth = 1. / np.maximum(disparity, 1e-2)
+
+    depth_model.cpu()
+    gc.collect()
+    torch.cuda.empty_cache()
+    del depth_model
     
     depth_prediction = torch.tensor(depth, device=device)
     depth_mask = torch.tensor(depth_mask, device=device)
@@ -218,7 +223,7 @@ if __name__ == '__main__':
     # save_image(ori_imgs, os.path.join(opt.workspace, opt.text.replace(" ", "_") + '_ref.png'))
 
     model = NeRFNetwork(opt)
-    trainer = Trainer('df', opt, model, depth_model, guidance, 
+    trainer = Trainer('df', opt, model, None, guidance, 
                         ref_imgs=ref_imgs, ref_depth=depth_prediction, 
                         ref_mask=depth_mask, ori_imgs=ori_imgs, 
                         device=device, workspace=opt.workspace, optimizer=optimizer, ema_decay=None, fp16=opt.fp16, lr_scheduler=scheduler, use_checkpoint=opt.ckpt, eval_interval=opt.eval_interval, scheduler_update_every_step=True)

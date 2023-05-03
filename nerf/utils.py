@@ -273,13 +273,14 @@ class Trainer(object):
             model = torch.nn.parallel.DataParallel(model)
         self.model = model
 
-        depth_model.to(self.device)
-        if self.world_size > 1:
-            depth_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(depth_model)
-            depth_model = torch.nn.parallel.DataParallel(depth_model)
-        self.depth_model = depth_model
-        self.depth_model.eval()
-        del depth_model
+        #depth_model.to(self.device)
+        #if self.world_size > 1:
+        #    depth_model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(depth_model)
+        #    depth_model = torch.nn.parallel.DataParallel(depth_model)
+        #self.depth_model = depth_model
+        #self.depth_model.eval()
+        #self.depth_model.cpu()
+        #del depth_model
 
         self.depth_transform = T.Compose(
         [
@@ -539,8 +540,7 @@ class Trainer(object):
             de_imgs = None
         else:
             loss, de_imgs = self.guidance.train_step(text_z, pred_rgb, clip_model=self.clip_model, 
-            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale,
-            model=self.model, device=self.device)
+            ref_text=text, islarge=data['is_large'], ref_rgb=gt_rgb, guidance_scale=self.opt.guidance_scale,)
         
         self.print_mem("train_step 10")
         self.model.to(self.device)

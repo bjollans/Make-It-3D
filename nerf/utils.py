@@ -886,6 +886,32 @@ class Trainer(object):
                 pbar.update(loader.batch_size)
             #self.print_mem("after step")
 
+        if self.ema is not None:
+            self.ema.update()
+
+        #self.print_mem("before sync")
+        average_loss = total_loss / self.local_step
+        self.stats["loss"].append(average_loss)
+
+        #self.print_mem("after sync")
+        if self.local_rank == 0:
+            pbar.close()
+            if self.report_metric_at_train:
+                for metric in self.metrics:
+                    self.log(metric.report(), style="red")
+                    if self.use_tensorboardX:
+                        metric.write(self.writer, self.epoch, prefix="train")
+                    metric.clear()
+
+        #self.print_mem("after report")
+        if not self.scheduler_update_every_step:
+            if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.lr_scheduler.step(average_loss)
+            else:
+                self.lr_scheduler.step()
+
+        self.log(f"==> Finished Epoch {self.epoch}.")
+
 
     def evaluate_one_epoch(self, loader, name=None):
         self.log(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")

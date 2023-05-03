@@ -39,7 +39,7 @@ class StableDiffusion(nn.Module):
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
 
         # Create model
-        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae")#.to(self.device)
+        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
         self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder")#.to(self.device)
         self.image_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14")#.to(self.device)
@@ -206,15 +206,10 @@ class StableDiffusion(nn.Module):
             # clip grad for stable training?
             grad = torch.nan_to_num(grad)
             self.print_mem("train_step_sd 15")
-            self.vae.to(self.device)
-            self.print_mem("train_step_sd 16")
             latents.backward(gradient=grad, retain_graph=True)
-            self.vae.cpu()
-            gc.collect()
-            torch.cuda.empty_cache()
-            self.print_mem("train_step_sd 17")
+            self.print_mem("train_step_sd 16")
             loss = 0
-        self.print_mem("train_step_sd 18")
+        self.print_mem("train_step_sd 17")
         del t
         return loss, imgs # dummy loss value
 

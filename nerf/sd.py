@@ -251,8 +251,9 @@ class StableDiffusion(nn.Module):
         # imgs: [B, 3, H, W]
 
         imgs = 2 * imgs - 1
-
+        self.vae.to(self.device)
         posterior = self.vae.encode(imgs).latent_dist
+        self.vae.cpu()
         latents = posterior.sample() * 0.18215
 
         return latents

@@ -229,7 +229,7 @@ class Trainer(object):
                  use_loss_as_metric=True, # use loss as the first metric
                  report_metric_at_train=False, # also report metrics at training
                  use_checkpoint="latest", # which ckpt to use at init time
-                 use_tensorboardX=True, # whether to use tensorboard for logging
+                 use_tensorboardX=False, # whether to use tensorboard for logging
                  scheduler_update_every_step=False, # whether to call scheduler.step() after every train step
                  ):
         
@@ -848,7 +848,8 @@ class Trainer(object):
             self.optimizer.zero_grad()
             #self.print_mem("middle step 2")
 
-            loss=torch.tensor([0],device=self.device)
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                pred_rgbs, pred_ws, loss = self.train_step(data)
 
             #self.print_mem("middle step 3")
 

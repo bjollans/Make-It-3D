@@ -92,9 +92,9 @@ class StableDiffusion(nn.Module):
     def get_img_embeds(self, prompt_img):
         # Tokenize text and get embeddings
         prompt_img = prompt_img.squeeze(0)
-        img_input = self.processor(images=prompt_img.detach().cpu()
+        img_input = self.processor(images=prompt_img.detach().cpu().numpy(), return_tensors='pt')
         gc.collect()
-        torch.cuda.empty_cache().numpy(), return_tensors='pt')
+        torch.cuda.empty_cache()
 
         self.image_encoder.to(self.device)
         with torch.no_grad():

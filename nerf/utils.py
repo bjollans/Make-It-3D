@@ -384,6 +384,14 @@ class Trainer(object):
                 self.log(f"[INFO] Loading {self.use_checkpoint} ...")
                 self.load_checkpoint(self.use_checkpoint)
 
+    def print_mem(self, moment):
+        t = torch.cuda.get_device_properties(0).total_memory
+        r = torch.cuda.memory_reserved(0)
+        a = torch.cuda.memory_allocated(0)
+        f = r-a
+        print("----------------------------------------")
+        print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
+
     # calculate the text embs.
     def prepare_text_embeddings(self):
 
@@ -804,14 +812,6 @@ class Trainer(object):
         np.save(os.path.join(save_path, f'{name}_poses.npy'), all_poses)
 
         self.log(f"==> Finished Test.")
-    
-    #def print_mem(self, moment):
-        t = torch.cuda.get_device_properties(0).total_memory
-        r = torch.cuda.memory_reserved(0)
-        a = torch.cuda.memory_allocated(0)
-        f = r-a
-        print("----------------------------------------")
-        print(f"Moment:{moment}, Total: {t}, Reserved: {r}, Allocated: {a}, Free: {f}")
 
     def train_one_epoch(self, loader):
         self.log(f"==> Start Training {self.workspace} Epoch {self.epoch}, lr={self.optimizer.param_groups[0]['lr']:.6f} ...")

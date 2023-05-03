@@ -206,7 +206,11 @@ class StableDiffusion(nn.Module):
             # clip grad for stable training?
             grad = torch.nan_to_num(grad)
             self.print_mem("train_step_sd 15")
+
+            self.vae.to(self.device)
             latents.backward(gradient=grad, retain_graph=True)
+            self.vae.cpu()
+            
             self.print_mem("train_step_sd 16")
             loss = 0
         self.print_mem("train_step_sd 17")

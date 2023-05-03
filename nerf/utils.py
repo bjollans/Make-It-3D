@@ -848,7 +848,7 @@ class Trainer(object):
             self.optimizer.zero_grad()
             #self.print_mem("middle step 2")
 
-            loss=torch.cuda.tensor([0])
+            loss=torch.tensor([0],device=self.device)
 
             #self.print_mem("middle step 3")
 

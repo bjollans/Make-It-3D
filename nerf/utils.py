@@ -853,7 +853,15 @@ class Trainer(object):
 
             #self.print_mem("middle step 3")
 
-            
+            loss.backward()
+            self.optimizer.step()
+            #self.scaler.scale(loss).backward()
+            #self.print_mem("middle step 3.1")
+            #nn.utils.clip_grad_norm(self.model.parameters(), max_norm=10)
+            #self.print_mem("middle step 3.2")
+            #self.scaler.step(self.optimizer)
+            #self.print_mem("middle step 3.3")
+            #self.scaler.update()
 
             #self.print_mem("middle step 4")
 

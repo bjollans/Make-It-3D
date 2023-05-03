@@ -9,6 +9,7 @@ import tensorboardX
 
 import numpy as np
 import pandas as pd
+import gc
 
 import time
 from datetime import datetime
@@ -134,7 +135,9 @@ def torch_vis_2d(x, renormalize=False):
     if isinstance(x, torch.Tensor):
         if len(x.shape) == 3:
             x = x.permute(1,2,0).squeeze()
-        x = x.detach().cpu().numpy()
+        x = x.detach().cpu()
+        gc.collect()
+        torch.cuda.empty_cache().numpy()
         
     print(f'[torch_vis_2d] {x.shape}, {x.dtype}, {x.min()} ~ {x.max()}')
     
@@ -170,7 +173,9 @@ def extract_fields(bound_min, bound_max, resolution, query_func):
                 xx, yy, zz = torch.meshgrid(xs, ys, zs) # for torch < 1.10, should remove indexing='ij'
                 pts = torch.cat([xx.reshape(-1, 1), yy.reshape(-1, 1), zz.reshape(-1, 1)], dim=-1) # [1, N, 3]
                 val = query_func(pts).reshape(len(xs), len(ys), len(zs)) # [1, N, 1] --> [x, y, z]
-                u[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = val.detach().cpu().numpy()
+                u[xi * N: xi * N + len(xs), yi * N: yi * N + len(ys), zi * N: zi * N + len(zs)] = val.detach().cpu()
+                gc.collect()
+                torch.cuda.empty_cache().numpy()
                 del val
     return u
 
@@ -185,8 +190,12 @@ def extract_geometry(bound_min, bound_max, resolution, threshold, query_func, us
     
     vertices, triangles = mcubes.marching_cubes(u, threshold)
 
-    b_max_np = bound_max.detach().cpu().numpy()
-    b_min_np = bound_min.detach().cpu().numpy()
+    b_max_np = bound_max.detach().cpu()
+    gc.collect()
+    torch.cuda.empty_cache().numpy()
+    b_min_np = bound_min.detach().cpu()
+    gc.collect()
+    torch.cuda.empty_cache().numpy()
 
     vertices = vertices / (resolution - 1.0) * (b_max_np - b_min_np)[None, :] + b_min_np[None, :]
     
@@ -247,7 +256,11 @@ class Trainer(object):
         self.clip_model, self.clip_preprocess = clip.load("ViT-B/16", jit=False)
 
         #self.clip_model.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
         #self.clip_preprocess.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         self.ref_imgs = ref_imgs
         self.ori_imgs = ori_imgs
@@ -518,6 +531,8 @@ class Trainer(object):
             text = self.text[0]
         self.print_mem("train_step 9")
         self.model.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
         self.print_mem("train_step 9.1")
         if self.global_step < self.opt.diff_iters or data['is_front']:
             loss = 0
@@ -573,6 +588,8 @@ class Trainer(object):
         print(f'pred_rgb: {pred_rgb.shape}, gt_rgb: {gt_rgb.shape}')
     
         self.model.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
         if data['is_front']:
             loss_ref = self.opt.lambda_img * self.img_loss(pred_rgb, gt_rgb)
             loss_depth = self.opt.lambda_depth * self.depth_loss(self.pearson, pred_depth, self.depth_prediction, ~self.depth_mask)
@@ -729,22 +746,32 @@ class Trainer(object):
                 # print(preds_mask)
                 mask = (preds_mask>0.9).int()
 
-                mask = mask[0].detach().cpu().numpy()
+                mask = mask[0].detach().cpu()
+                gc.collect()
+                torch.cuda.empty_cache().numpy()
                 mask = (mask * 255).astype(np.uint8)
 
-                pred = preds[0].detach().cpu().numpy()
+                pred = preds[0].detach().cpu()
+                gc.collect()
+                torch.cuda.empty_cache().numpy()
                 pred = (pred * 255).astype(np.uint8)
 
                 if preds_normal is not None:
-                    preds_normal = preds_normal[0].detach().cpu().numpy()
+                    preds_normal = preds_normal[0].detach().cpu()
+                    gc.collect()
+                    torch.cuda.empty_cache().numpy()
                     preds_normal = (preds_normal * 255).astype(np.uint8)
                 
                 poses = data['poses']
-                pose = poses[0].detach().cpu().numpy()
+                pose = poses[0].detach().cpu()
+                gc.collect()
+                torch.cuda.empty_cache().numpy()
                 all_poses.append(pose)
 
                 if write_video:
-                    pred_depth_cpu = preds_depth[0].detach().cpu().numpy()
+                    pred_depth_cpu = preds_depth[0].detach().cpu()
+                    gc.collect()
+                    torch.cuda.empty_cache().numpy()
                     pred_depth_cpu = (pred_depth_cpu * 255.).astype(np.uint8)
 
                     all_preds.append(pred)
@@ -752,7 +779,9 @@ class Trainer(object):
                         all_preds_normal.append(preds_normal)
                     all_preds_depth.append(pred_depth_cpu)
                 
-                pred_depth = preds_depth[0].detach().cpu().numpy()
+                pred_depth = preds_depth[0].detach().cpu()
+                gc.collect()
+                torch.cuda.empty_cache().numpy()
                 pred_depth = (pred_depth * 1000.).astype(np.uint16)
 
                 cv2.imwrite(os.path.join(save_path, f'{name}_{i:04d}_rgb.png'), cv2.cvtColor(pred, cv2.COLOR_RGB2BGR))

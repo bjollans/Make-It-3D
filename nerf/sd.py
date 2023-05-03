@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.utils import save_image
 import torchvision.transforms as T
+import gc
 import time
 import os
 import clip
@@ -82,6 +83,8 @@ class StableDiffusion(nn.Module):
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
         self.text_encoder.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
         # Cat for final embeddings
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
         return text_embeddings
@@ -89,12 +92,16 @@ class StableDiffusion(nn.Module):
     def get_img_embeds(self, prompt_img):
         # Tokenize text and get embeddings
         prompt_img = prompt_img.squeeze(0)
-        img_input = self.processor(images=prompt_img.detach().cpu().numpy(), return_tensors='pt')
+        img_input = self.processor(images=prompt_img.detach().cpu()
+        gc.collect()
+        torch.cuda.empty_cache().numpy(), return_tensors='pt')
 
         self.image_encoder.to(self.device)
         with torch.no_grad():
             img_embeddings = self.image_encoder(img_input.pixel_values.to(self.device))[0]
         self.image_encoder.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return img_embeddings
 
@@ -159,10 +166,14 @@ class StableDiffusion(nn.Module):
             latent_model_input = latent_model_input.detach().requires_grad_()
             self.print_mem("train_step_sd 5")
             model.cpu()
+            gc.collect()
+            torch.cuda.empty_cache()
             self.print_mem("train_step_sd 5.1")
             self.unet.to(self.device)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
             self.unet.cpu()
+            gc.collect()
+            torch.cuda.empty_cache()
             # torch.cuda.synchronize(); print(f'[TIME] guiding: unet {time.time() - _t:.4f}s')
             self.print_mem("train_step_sd 6")
             # perform guidance
@@ -201,6 +212,8 @@ class StableDiffusion(nn.Module):
             self.vae.to(device)
             latents.backward(gradient=grad, retain_graph=True)
             self.vae.cpu()
+            gc.collect()
+            torch.cuda.empty_cache()
             self.print_mem("train_step_sd 17")
             loss = 0
         self.print_mem("train_step_sd 18")
@@ -225,6 +238,8 @@ class StableDiffusion(nn.Module):
                     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
 
                 self.unet.cpu()
+                gc.collect()
+                torch.cuda.empty_cache()
 
                 # perform guidance
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -244,6 +259,8 @@ class StableDiffusion(nn.Module):
         self.vae.to(self.device)
         imgs = self.vae.decode(latents).sample
         self.vae.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
 
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
         
@@ -256,6 +273,8 @@ class StableDiffusion(nn.Module):
         self.vae.to(self.device)
         posterior = self.vae.encode(imgs).latent_dist
         self.vae.cpu()
+        gc.collect()
+        torch.cuda.empty_cache()
         latents = posterior.sample() * 0.18215
 
         return latents

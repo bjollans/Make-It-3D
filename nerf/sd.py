@@ -38,11 +38,11 @@ class StableDiffusion(nn.Module):
             raise ValueError(f'Stable-diffusion version {self.sd_version} not supported.')
 
         # Create model
-        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae").to(self.device)
+        self.vae = AutoencoderKL.from_pretrained(model_key, subfolder="vae")#.to(self.device)
         self.tokenizer = CLIPTokenizer.from_pretrained(model_key, subfolder="tokenizer")
-        self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder").to(self.device)
-        self.image_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14").to(self.device)
-        self.text_clip_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14").to(self.device)
+        self.text_encoder = CLIPTextModel.from_pretrained(model_key, subfolder="text_encoder")#.to(self.device)
+        self.image_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14")#.to(self.device)
+        #self.text_clip_encoder = CLIPVisionModel.from_pretrained("openai/clip-vit-large-patch14").to(self.device)
         
         self.processor = CLIPFeatureExtractor.from_pretrained("openai/clip-vit-large-patch14")
         
@@ -50,7 +50,7 @@ class StableDiffusion(nn.Module):
             T.Resize((224, 224)),
             T.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
-        self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet").to(self.device)
+        self.unet = UNet2DConditionModel.from_pretrained(model_key, subfolder="unet")#.to(self.device)
         
         self.scheduler = DDIMScheduler.from_pretrained(model_key, subfolder="scheduler")
         # self.scheduler = PNDMScheduler.from_pretrained(model_key, subfolder="scheduler")
@@ -71,6 +71,7 @@ class StableDiffusion(nn.Module):
         # Tokenize text and get embeddings
         text_input = self.tokenizer(prompt, padding='max_length', max_length=self.tokenizer.model_max_length, truncation=True, return_tensors='pt')
 
+        self.text_encoder.to(self.device)
         with torch.no_grad():
             text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
 
@@ -80,6 +81,7 @@ class StableDiffusion(nn.Module):
         with torch.no_grad():
             uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
 
+        self.text_encoder.cpu()
         # Cat for final embeddings
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
         return text_embeddings
@@ -89,8 +91,10 @@ class StableDiffusion(nn.Module):
         prompt_img = prompt_img.squeeze(0)
         img_input = self.processor(images=prompt_img.detach().cpu().numpy(), return_tensors='pt')
 
+        self.image_encoder.to(self.device)
         with torch.no_grad():
             img_embeddings = self.image_encoder(img_input.pixel_values.to(self.device))[0]
+        self.image_encoder.cpu()
 
         return img_embeddings
 
@@ -156,7 +160,9 @@ class StableDiffusion(nn.Module):
             self.print_mem("train_step_sd 5")
             model.cpu()
             self.print_mem("train_step_sd 5.1")
+            self.unet.to(self.device)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+            self.unet.cpu()
             # torch.cuda.synchronize(); print(f'[TIME] guiding: unet {time.time() - _t:.4f}s')
             self.print_mem("train_step_sd 6")
             # perform guidance
@@ -196,6 +202,7 @@ class StableDiffusion(nn.Module):
             self.print_mem("train_step_sd 17")
             loss = 0
         self.print_mem("train_step_sd 18")
+        del t
         return loss, imgs # dummy loss value
 
     def produce_latents(self, text_embeddings, height=512, width=512, num_inference_steps=50, guidance_scale=7.5, latents=None):
@@ -211,8 +218,11 @@ class StableDiffusion(nn.Module):
                 latent_model_input = torch.cat([latents] * 2)
 
                 # predict the noise residual
+                self.unet.to(self.device)
                 with torch.no_grad():
                     noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings)['sample']
+
+                self.unet.cpu()
 
                 # perform guidance
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
@@ -228,7 +238,10 @@ class StableDiffusion(nn.Module):
         latents = 1 / 0.18215 * latents
 
         # with torch.no_grad():
+
+        self.vae.to(self.device)
         imgs = self.vae.decode(latents).sample
+        self.vae.cpu()
 
         imgs = (imgs / 2 + 0.5).clamp(0, 1)
         
@@ -260,6 +273,7 @@ class StableDiffusion(nn.Module):
         
         # Img latents -> imgs
         imgs = self.decode_latents(latents) # [1, 3, 512, 512]
+        del latents
         return imgs
 
 

@@ -861,31 +861,6 @@ class Trainer(object):
             #self.print_mem("middle step 3.3")
             self.scaler.update()
 
-            #self.print_mem("middle step 4")
-
-            if self.scheduler_update_every_step:
-                self.lr_scheduler.step()
-
-            #self.print_mem("middle step 5")
-
-            loss_val = loss.item()
-            total_loss += loss_val
-
-            #self.print_mem("middle step 6")
-
-            if self.local_rank == 0:
-
-                if self.use_tensorboardX:
-                    self.writer.add_scalar("train/loss", loss_val, self.global_step)
-                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.global_step)
-
-                if self.scheduler_update_every_step:
-                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f}), lr={self.optimizer.param_groups[0]['lr']:.6f}")
-                else:
-                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
-                pbar.update(loader.batch_size)
-            #self.print_mem("after step")
-
         if self.ema is not None:
             self.ema.update()
 

@@ -834,6 +834,58 @@ class Trainer(object):
 
         self.local_step = 0
 
+        for data in loader:
+            #self.print_mem("before step")
+            # update grid every 16 steps
+            if self.model.cuda_ray and self.global_step % self.opt.update_extra_interval == 0:
+                with torch.cuda.amp.autocast(enabled=self.fp16):
+                    self.model.update_extra_state()
+                    
+            #self.print_mem("middle step 1")
+            self.local_step += 1
+            self.global_step += 1
+
+            self.optimizer.zero_grad()
+            #self.print_mem("middle step 2")
+
+            with torch.cuda.amp.autocast(enabled=self.fp16):
+                pred_rgbs, pred_ws, loss = self.train_step(data)
+
+            #self.print_mem("middle step 3")
+
+            self.scaler.scale(loss).backward()
+            #self.print_mem("middle step 3.1")
+            nn.utils.clip_grad_norm(self.model.parameters(), max_norm=10)
+            #self.print_mem("middle step 3.2")
+            self.scaler.step(self.optimizer)
+            #self.print_mem("middle step 3.3")
+            self.scaler.update()
+
+            #self.print_mem("middle step 4")
+
+            if self.scheduler_update_every_step:
+                self.lr_scheduler.step()
+
+            #self.print_mem("middle step 5")
+
+            loss_val = loss.item()
+            total_loss += loss_val
+
+            #self.print_mem("middle step 6")
+
+            if self.local_rank == 0:
+
+                if self.use_tensorboardX:
+                    self.writer.add_scalar("train/loss", loss_val, self.global_step)
+                    self.writer.add_scalar("train/lr", self.optimizer.param_groups[0]['lr'], self.global_step)
+
+                if self.scheduler_update_every_step:
+                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f}), lr={self.optimizer.param_groups[0]['lr']:.6f}")
+                else:
+                    pbar.set_description(f"loss={loss_val:.4f} ({total_loss/self.local_step:.4f})")
+                pbar.update(loader.batch_size)
+            #self.print_mem("after step")
+
 
     def evaluate_one_epoch(self, loader, name=None):
         self.log(f"++> Evaluate {self.workspace} at epoch {self.epoch} ...")

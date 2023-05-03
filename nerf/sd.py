@@ -124,7 +124,7 @@ class StableDiffusion(nn.Module):
         loss = - (image_z_1 * text_z).sum(-1).mean()
         return loss
 
-    def print_mem(self, moment):
+    #def print_mem(self, moment):
         t = torch.cuda.get_device_properties(0).total_memory
         r = torch.cuda.memory_reserved(0)
         a = torch.cuda.memory_allocated(0)
@@ -138,23 +138,23 @@ class StableDiffusion(nn.Module):
         loss = 0
         imgs = None
 
-        self.print_mem("train_step_sd 1")
+        #self.print_mem("train_step_sd 1")
         # _t = time.time()
         pred_rgb_512 = F.interpolate(pred_rgb, (512, 512), mode='bilinear', align_corners=False)
         # torch.cuda.synchronize(); print(f'[TIME] guiding: interp {time.time() - _t:.4f}s')
 
-        self.print_mem("train_step_sd 2")
+        #self.print_mem("train_step_sd 2")
         # timestep ~ U(0.02, 0.98) to avoid very high/low noise level
         t = torch.randint(self.min_step, self.max_step + 1, [1], dtype=torch.long, device=self.device)
         w_ = 1.0
 
-        self.print_mem("train_step_sd 3")
+        #self.print_mem("train_step_sd 3")
         # encode image into latents with vae, requires grad!
         # _t = time.time()
         latents = self.encode_imgs(pred_rgb_512)
         # torch.cuda.synchronize(); print(f'[TIME] guiding: vae enc {time.time() - _t:.4f}s')
 
-        self.print_mem("train_step_sd 4")
+        #self.print_mem("train_step_sd 4")
         # predict the noise residual with unet, NO grad!
         # _t = time.time()
         with torch.no_grad():
@@ -164,56 +164,56 @@ class StableDiffusion(nn.Module):
             # pred noise
             latent_model_input = torch.cat([latents_noisy] * 2)
             latent_model_input = latent_model_input.detach().requires_grad_()
-            self.print_mem("train_step_sd 5")
+            #self.print_mem("train_step_sd 5")
             gc.collect()
             torch.cuda.empty_cache()
-            self.print_mem("train_step_sd 5.1")
+            #self.print_mem("train_step_sd 5.1")
             self.unet.to(self.device)
             noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
             self.unet.cpu()
             gc.collect()
             torch.cuda.empty_cache()
             # torch.cuda.synchronize(); print(f'[TIME] guiding: unet {time.time() - _t:.4f}s')
-            self.print_mem("train_step_sd 6")
+            #self.print_mem("train_step_sd 6")
             # perform guidance
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
             noise_pred = noise_pred_text + guidance_scale * (noise_pred_text - noise_pred_uncond)
-            self.print_mem("train_step_sd 7")
+            #self.print_mem("train_step_sd 7")
         
         if not islarge and (t / self.num_train_timesteps) <= 0.4:
-            self.print_mem("train_step_sd 8")
+            #self.print_mem("train_step_sd 8")
             self.scheduler.set_timesteps(self.num_train_timesteps)
-            self.print_mem("train_step_sd 9")
+            #self.print_mem("train_step_sd 9")
             de_latents = self.scheduler.step(noise_pred, t, latents_noisy)['prev_sample']
-            self.print_mem("train_step_sd 10")
+            #self.print_mem("train_step_sd 10")
             # de_latents = de_latents.detach().requires_grad_()
             imgs = self.decode_latents(de_latents)
-            self.print_mem("train_step_sd 11")
+            #self.print_mem("train_step_sd 11")
             loss = 10 * self.img_clip_loss(clip_model, imgs, ref_rgb) + \
                     10 * self.img_text_clip_loss(clip_model, imgs, ref_text)
-            self.print_mem("train_step_sd 12")
+            #self.print_mem("train_step_sd 12")
             
             # grad = torch.autograd.grad(loss_clip, de_latents, retain_graph=True)[0]
             # print(f"loss clip: {loss}")
         else:
             # w(t), sigma_t^2
-            self.print_mem("train_step_sd 13")
+            #self.print_mem("train_step_sd 13")
             w = (1 - self.alphas[t])
             grad = w * (noise_pred - noise) * w_
             imgs = None
-            self.print_mem("train_step_sd 14")
+            #self.print_mem("train_step_sd 14")
 
             # clip grad for stable training?
             grad = torch.nan_to_num(grad)
-            self.print_mem("train_step_sd 15")
+            #self.print_mem("train_step_sd 15")
 
             #self.vae.to(self.device)
             #latents.backward(gradient=grad, retain_graph=True)
             #self.vae.cpu()
 
-            #self.print_mem("train_step_sd 16")
+            ##self.print_mem("train_step_sd 16")
             loss = 0
-        self.print_mem("train_step_sd 16")
+        #self.print_mem("train_step_sd 1")
         del t
         return loss, imgs # dummy loss value
 
